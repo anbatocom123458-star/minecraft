@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    restart: always
+    ports:
+      - "25565:25565"       # Cổng kết nối cho Minecraft PC (Java)
+      - "19132:19132/udp"   # Cổng kết nối cho Minecraft PE (Bedrock)
+    environment:
+      - EULA=TRUE
+      - TYPE=PAPER          # Dùng PaperMC để server mượt và cài được plugin
+      - VERSION=LATEST      # Tự động tải bản mới nhất
+      - BEDROCK_ENABLED=true # Tự động cài và bật GeyserMC cho phép PE chơi chung
+      - ONLINE_MODE=false   # Đổi thành true nếu bạn muốn bắt buộc phải có tài khoản bản quyền
+      - MEMORY=2G           # Lượng RAM cấp cho server (Tùy chỉnh theo gói Railway của bạn)
+    volumes:
+      - minecraft-data:/data # Lưu lại thế giới và cấu hình khi server khởi động lại
+
+volumes:
+  minecraft-data:
