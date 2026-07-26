@@ -95,16 +95,19 @@ class ParticleField:
 
 
 # ─── RENDERERS ───
-def render_logo_frame(frame):
+def render_logo_frame(frame, width=90):
     """Logo với hiệu ứng gradient wave chạy theo frame."""
     t = Text()
     lines = LOGO.split('\n')
+    max_line_len = max(len(l) for l in lines)
+    pad = max(0, (width - max_line_len) // 2)
     for li, line in enumerate(lines):
         color = GRADIENT[(frame + li) % len(GRADIENT)]
-        t.append(line, style=Style(color=color, bold=True))
+        t.append(" " * pad + line, style=Style(color=color, bold=True))
         t.append('\n')
-    t.append(f"\n{SUBTITLE}\n", style=Style(color=C_GRAY, dim=True))
-    return Align.center(t)
+    sub_pad = max(0, (width - len(SUBTITLE)) // 2)
+    t.append(" " * sub_pad + f"{SUBTITLE}\n", style=Style(color=C_GRAY, dim=True))
+    return t
 
 
 def render_logo():
@@ -178,7 +181,7 @@ def render_welcome():
             for sl in stars[:4]:
                 body.append(sl)
                 body.append('\n')
-            body.append(render_logo_frame(frame // 3))
+            body.append(render_logo_frame(frame // 3, tw))
             for sl in stars[4:]:
                 body.append(sl)
                 body.append('\n')
