@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import sys
 import time
@@ -24,6 +23,7 @@ try:
     from rich.rule import Rule
     from rich.syntax import Syntax
     from rich.tree import Tree
+    from rich.spinner import Spinner
 except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "rich"], check=True)
     from rich.console import Console, Group
@@ -38,12 +38,20 @@ except ImportError:
     from rich.rule import Rule
     from rich.syntax import Syntax
     from rich.tree import Tree
+    from rich.spinner import Spinner
 
 console = Console()
 
 # ─── CONFIG & PALETTE ───
-OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "qwen2.5:0.5b"
+OLLAMA_BASE_URL = "http://localhost:11434"
+AVAILABLE_MODELS = {
+    "1": ("qwen2.5:0.5b", "Qwen 2.5 0.5B (Siêu nhẹ, cực nhanh)"),
+    "2": ("deepseek-r1:1.5b", "DeepSeek R1 1.5B (Tư duy & Code đỉnh cao)"),
+    "3": ("deepseek-coder:6.7b", "DeepSeek Coder 6.7B (Chuyên lập trình)"),
+    "4": ("llama3.2:1b", "Llama 3.2 1B (Meta AI - Cân bằng tốt)"),
+    "5": ("phi3:mini", "Microsoft Phi-3 Mini (Logic mạnh)"),
+}
+CURRENT_MODEL = "qwen2.5:0.5b"
 
 C_BG       = "#0d0d0d"
 C_ORANGE   = "#ff6b35"
@@ -69,8 +77,9 @@ LOGO = """
  ╚══╝╚══╝  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
 """.strip()
 
-SUBTITLE = "WSTUDIO CLI ENGINE v5.0 | Natural AI & Meteor Engine"
+SUBTITLE = "WSTUDIO CLI ENGINE v6.0 | DeepSeek & Ollama Local AI"
 CWD = os.getcwd()
+ANIM_FRAME = 0
 
 
 # ─── AUTO SYSTEM SETUP ───
@@ -83,12 +92,23 @@ def ensure_local_ai_service():
             pass
 
     try:
-        req = urllib.request.Request("http://localhost:11434/api/tags")
-        with urllib.request.urlopen(req, timeout=1.5):
+        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=2):
             pass
     except Exception:
         subprocess.Popen("ollama serve > /dev/null 2>&1 &", shell=True)
-        time.sleep(2)
+        time.sleep(3)
+
+
+def get_installed_ollama_models() -> list:
+    """Lấy danh sách các model đã có sẵn trong Ollama local."""
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=3) as res:
+            data = json.loads(res.read().decode('utf-8'))
+            return [m.get('name') for m in data.get('models', [])]
+    except Exception:
+        return []
 
 
 # ─── METEOR & STAR ANIMATION ENGINE ───
@@ -96,16 +116,16 @@ class MeteorParticleField:
     def __init__(self, w=80, h=3):
         self.w, self.h = w, h
         self.stars = []
-        for _ in range(12):
+        for _ in range(16):
             self.stars.append({
                 'x': random.randint(0, w - 1),
                 'y': random.uniform(0, h - 1),
-                'c': random.choice(['·', '•', '*', '✦']),
-                's': random.uniform(0.2, 0.5),
-                'col': random.choice([C_GRAY, C_ORANGE2, C_WHITE]),
+                'c': random.choice(['·', '•', '*', '✦', '✧']),
+                's': random.uniform(0.1, 0.3),
+                'col': random.choice([C_GRAY, C_ORANGE2, C_WHITE, C_DARKGRAY]),
             })
-        self.meteor_x = 0
-        self.meteor_y = 0
+        self.meteor_x = -5
+        self.meteor_y = random.randint(0, h - 1)
 
     def tick(self):
         for s in self.stars:
@@ -113,7 +133,11 @@ class MeteorParticleField:
             if s['y'] >= self.h:
                 s['y'] = 0
                 s['x'] = random.randint(0, self.w - 1)
-        self.meteor_x = (self.meteor_x + 2) % (self.w + 10)
+        
+        self.meteor_x += 2.5
+        if self.meteor_x > self.w + 10:
+            self.meteor_x = -5
+            self.meteor_y = random.randint(0, self.h - 1)
 
     def render(self):
         grid = [[' ' for _ in range(self.w)] for _ in range(self.h)]
@@ -125,11 +149,13 @@ class MeteorParticleField:
                 grid[y][x] = s['c']
                 cols[y][x] = s['col']
 
-        # Meteor streak
-        mx, my = self.meteor_x - 5, 1
-        if 0 <= my < self.h and 0 <= mx < self.w:
-            grid[my][mx] = '☄'
-            cols[my][mx] = C_CYAN
+        mx, my = int(self.meteor_x), int(self.meteor_y)
+        trail = [('☄', C_CYAN), ('≡', C_BLUE), ('-', C_BLUE), ('·', C_DARKGRAY)]
+        for i, (char, color) in enumerate(trail):
+            tx = mx - i
+            if 0 <= my < self.h and 0 <= tx < self.w:
+                grid[my][tx] = char
+                cols[my][tx] = color
 
         lines = []
         for y in range(self.h):
@@ -155,20 +181,11 @@ def render_logo_frame(frame, width=80):
     return t
 
 
-def render_logo():
-    t = Text()
-    for line in LOGO.split('\n'):
-        t.append(line, style=Style(color=C_ORANGE, bold=True))
-        t.append('\n')
-    t.append(f"\n{SUBTITLE}\n", style=Style(color=C_GRAY, dim=True))
-    return Align.center(t)
-
-
 def render_input_box():
     inner = Text()
     inner.append("│ ", style=C_ORANGE)
     inner.append("Nói tự nhiên: ", style=C_WHITE)
-    inner.append('"xem file wcore", "chạy ls", "xoá file.txt" hoặc hỏi AI', style=Style(color=C_GRAY, dim=True))
+    inner.append('"xem file wcore", "đổi model", "xoá file.txt" hoặc hỏi AI', style=Style(color=C_GRAY, dim=True))
     return Panel(inner, box=ROUNDED, border_style=C_ORANGE2, padding=(0, 1), height=3)
 
 
@@ -176,7 +193,7 @@ def render_shortcuts():
     pairs = [
         ("xem <file>", "đọc"),
         ("chạy <cmd>", "shell"),
-        ("danh sách", "thư mục"),
+        ("đổi model", "AI Local"),
         ("xoá <file>", "xoá"),
         ("xóa màn hình", "clear"),
         ("thoát", "exit"),
@@ -193,52 +210,43 @@ def render_shortcuts():
 def render_status_bar():
     t = Text()
     t.append(" ⬤ ", style=C_GREEN)
-    t.append("LOCAL AI ACTIVE", style=Style(color=C_GREEN, bold=True))
+    t.append("LOCAL OLLAMA ACTIVE", style=Style(color=C_GREEN, bold=True))
     t.append("   │   ", style=C_DARKGRAY)
     t.append("🤖 Model: ", style=C_GRAY)
-    t.append(f"{DEFAULT_MODEL}", style=Style(color=C_PURPLE, bold=True))
+    t.append(f"{CURRENT_MODEL}", style=Style(color=C_PURPLE, bold=True))
     t.append("   │   ", style=C_DARKGRAY)
     t.append("📁 ", style=C_GRAY)
     t.append(f"{CWD}", style=Style(color=C_CYAN))
     return Align.center(t)
 
 
-def render_welcome():
-    # Xoá màn hình triệt để
-    os.system('clear' if os.name == 'posix' else 'cls')
+def draw_header():
+    """Vẽ Header Tĩnh kèm Hiệu ứng Sao băng."""
+    global ANIM_FRAME
+    ANIM_FRAME += 1
     tw = min(shutil.get_terminal_size().columns, 90)
-    pf = MeteorParticleField(w=tw, h=2)
+    pf = MeteorParticleField(w=tw, h=3)
+    for _ in range(ANIM_FRAME % 10):
+        pf.tick()
 
-    # Dùng transient=True để dọn sạch animation khi xong, không để lại vết lặp
-    with Live(console=console, refresh_per_second=15, transient=True) as live:
-        for frame in range(20):
-            pf.tick()
-            stars = pf.render()
-            
-            star_text = Text()
-            for sl in stars:
-                star_text.append(sl)
-                star_text.append('\n')
+    star_text = Text()
+    for sl in pf.render():
+        star_text.append(sl)
+        star_text.append('\n')
 
-            items = [
-                star_text,
-                render_logo_frame(frame, tw),
-                Align.center(render_input_box()),
-                render_shortcuts(),
-                render_status_bar()
-            ]
-            live.update(Group(*items))
-            time.sleep(0.04)
-
-    # In tĩnh DUY NHẤT 1 lần khung hình hoàn chỉnh sau animation
-    os.system('clear' if os.name == 'posix' else 'cls')
-    console.print(render_logo())
+    console.print(star_text)
+    console.print(render_logo_frame(ANIM_FRAME, tw))
     console.print(Align.center(render_input_box()))
     console.print()
     console.print(render_shortcuts())
     console.print()
     console.print(render_status_bar())
     console.print()
+
+
+def render_welcome():
+    os.system('clear' if os.name == 'posix' else 'cls')
+    draw_header()
 
 
 def flash_ok(msg):
@@ -248,18 +256,78 @@ def flash_err(msg):
     console.print(f"[bold {C_RED}]✘[/bold {C_RED}] [white]{msg}[/white]")
 
 
-# ─── LOCAL AI ENGINE ───
-def call_ollama_ai(prompt: str, model=DEFAULT_MODEL) -> str:
-    payload = {"model": model, "prompt": prompt, "stream": False}
+# ─── ĐỔI MODEL VỚI LUỒNG TẢI TRỰC QUAN ───
+def change_model_menu():
+    global CURRENT_MODEL
+    installed_models = get_installed_ollama_models()
+
+    tbl = Table(title="[bold orange1]🤖 DANH SÁCH MODEL LOCAL AI (OLLAMA)[/bold orange1]", box=ROUNDED, border_style=C_ORANGE)
+    tbl.add_column("STT", style=C_CYAN, justify="center")
+    tbl.add_column("Tên Model", style=C_PURPLE)
+    tbl.add_column("Trạng thái", style=C_GREEN, justify="center")
+    tbl.add_column("Mô tả / Đặc tính", style=C_WHITE)
+
+    for k, v in AVAILABLE_MODELS.items():
+        model_name = v[0]
+        is_ready = any(model_name in m for m in installed_models)
+        status = "[bold green]✔ Đã có[/bold green]" if is_ready else "[dim yellow]⬇ Cần tải[/dim yellow]"
+        tbl.add_row(k, model_name, status, v[1])
+
+    console.print(tbl)
+    choice = console.input(f"\n[bold {C_YELLOW}]Chọn số STT (hoặc nhập tên model tùy chỉnh, '0' để hủy): [/bold {C_YELLOW}]").strip()
+    
+    if choice == '0' or not choice:
+        return
+
+    selected_model = CURRENT_MODEL
+    if choice in AVAILABLE_MODELS:
+        selected_model = AVAILABLE_MODELS[choice][0]
+    else:
+        selected_model = choice
+
+    if not any(selected_model in m for m in installed_models):
+        console.print(f"\n[bold {C_YELLOW}]📦 Model '{selected_model}' chưa có sẵn. Đang tải về qua Ollama...[/bold {C_YELLOW}]")
+        try:
+            res = subprocess.run(f"ollama pull {selected_model}", shell=True)
+            if res.returncode != 0:
+                flash_err(f"Không thể tải model {selected_model}. Vui lòng kiểm tra lại tên model!")
+                return
+        except Exception as e:
+            flash_err(f"Lỗi khi tải model: {e}")
+            return
+
+    CURRENT_MODEL = selected_model
+    flash_ok(f"Đã chuyển thành công sang model: [bold {C_PURPLE}]{CURRENT_MODEL}[/bold {C_PURPLE}]")
+
+
+# ─── LOCAL AI ENGINE (CHUẨN SỬA LỖI 404 & THINKING) ───
+def call_ollama_ai(prompt: str, model=CURRENT_MODEL) -> str:
+    url = f"{OLLAMA_BASE_URL}/api/chat"
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "stream": False
+    }
+    
     data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(OLLAMA_URL, data=data, headers={'Content-Type': 'application/json'})
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
     
     try:
-        with urllib.request.urlopen(req, timeout=120) as response:
-            res_json = json.loads(response.read().decode('utf-8'))
-            return res_json.get("response", "Không nhận được phản hồi từ AI.")
+        with console.status(f"[bold {C_PURPLE}]🧠 [{model}] Đang suy nghĩ (Thinking)...[/bold {C_PURPLE}]", spinner="dots12"):
+            with urllib.request.urlopen(req, timeout=120) as response:
+                res_json = json.loads(response.read().decode('utf-8'))
+                msg = res_json.get("message", {}).get("content", "")
+                if not msg:
+                    msg = res_json.get("response", "Không nhận được phản hồi từ AI.")
+                return msg
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return f"[LỖI 404]: Model '{model}' chưa được cài đặt trong Ollama. Hãy gõ lệnh 'đổi model' để tải về."
+        return f"[LỖI AI HTTP {e.code}]: Ollama không xử lý được request. Kiểm tra lại model {model}."
     except Exception as e:
-        return f"[LỖI AI]: Không thể kết nối tới Ollama. Lỗi: {e}"
+        return f"[LỖI KẾT NỐI AI]: Không thể gọi Ollama. Bạn đã chạy 'ollama serve' chưa?\nChi tiết: {e}"
 
 
 # ─── INTENT PARSER ───
@@ -273,6 +341,11 @@ def parse_and_execute_intent(user_inp: str):
 
     if low in ('clear', 'xoá màn hình', 'xóa màn hình', '/clear', 'cls'):
         render_welcome()
+        return
+
+    # Chức năng đổi model
+    if low in ('đổi model', 'doi model', 'model', 'change model', '/model'):
+        change_model_menu()
         return
 
     # Xem/Đọc file
@@ -306,13 +379,12 @@ def parse_and_execute_intent(user_inp: str):
         cmd_help()
         return
 
-    # Mặc định gọi AI Local
-    with console.status(f"[bold {C_PURPLE}]🤖 Local AI đang suy nghĩ...[/bold {C_PURPLE}]", spinner="dots12"):
-        ai_reply = call_ollama_ai(inp)
+    # Gọi AI Local suy nghĩ & trả lời
+    ai_reply = call_ollama_ai(inp, model=CURRENT_MODEL)
 
     console.print(Panel(
         ai_reply, 
-        title=f"[bold {C_PURPLE}]🤖 Local AI ({DEFAULT_MODEL})[/bold {C_PURPLE}]", 
+        title=f"[bold {C_PURPLE}]🤖 Local AI ({CURRENT_MODEL})[/bold {C_PURPLE}]", 
         border_style=C_PURPLE, 
         box=ROUNDED
     ))
@@ -399,6 +471,7 @@ def cmd_help():
     tbl.add_column("Khẩu lệnh tiếng Việt")
     tbl.add_column("Hành động", style=C_WHITE)
     rows = [
+        ("đổi model", "Chuyển giữa DeepSeek, Qwen, Llama3,..."),
         ("xem file <file>", "Xem nội dung file có tô màu syntax"),
         ("chạy <lệnh>", "Chạy lệnh Shell hệ thống"),
         ("danh sách", "Xem cấu trúc thư mục hiện tại"),
