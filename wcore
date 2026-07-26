@@ -5,27 +5,46 @@ import time
 import shutil
 import random
 import subprocess
-import fnmatch
+import json
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 # ─── RICH IMPORTS ───
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
-from rich.align import Align
-from rich.live import Live
-from rich.style import Style
-from rich.box import ROUNDED, HEAVY
-from rich.table import Table
-from rich.columns import Columns
-from rich.rule import Rule
-from rich.syntax import Syntax
-from rich.tree import Tree
-from rich.progress import Progress, BarColumn, TextColumn
+try:
+    from rich.console import Console, Group
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.align import Align
+    from rich.live import Live
+    from rich.style import Style
+    from rich.box import ROUNDED
+    from rich.table import Table
+    from rich.columns import Columns
+    from rich.rule import Rule
+    from rich.syntax import Syntax
+    from rich.tree import Tree
+except ImportError:
+    subprocess.run([sys.executable, "-m", "pip", "install", "rich"], check=True)
+    from rich.console import Console, Group
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.align import Align
+    from rich.live import Live
+    from rich.style import Style
+    from rich.box import ROUNDED
+    from rich.table import Table
+    from rich.columns import Columns
+    from rich.rule import Rule
+    from rich.syntax import Syntax
+    from rich.tree import Tree
 
 console = Console()
 
-# ─── PALETTE ───
+# ─── CONFIG & PALETTE ───
+OLLAMA_URL = "http://localhost:11434/api/generate"
+DEFAULT_MODEL = "qwen2.5:0.5b"
+
 C_BG       = "#0d0d0d"
 C_ORANGE   = "#ff6b35"
 C_ORANGE2  = "#e85d04"
@@ -37,38 +56,56 @@ C_BLUE     = "#60a5fa"
 C_PURPLE   = "#c084fc"
 C_RED      = "#ff4444"
 C_YELLOW   = "#facc15"
-C_PINK     = "#f472b6"
 C_CYAN     = "#22d3ee"
 
 GRADIENT = [C_ORANGE, "#ff8555", "#ff9d73", C_ORANGE2, "#ffb385"]
 
-# ─── ASCII LOGO ───
 LOGO = """
 ██╗    ██╗ ██████╗ ██████╗ ██████╗ ███████╗
 ██║    ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝
-██║ █╗ ██║██║     ██║   ██║██████╔╝█████╗
-██║███╗██║██║     ██║   ██║██╔══██╗██╔══╝
+██║ █╗ ██║██║     ██║   ██║██████╔╝█████╗  
+██║███╗██║██║     ██║   ██║██╔══██╗██╔══╝  
 ╚███╔███╔╝╚██████╗╚██████╔╝██║  ██║███████╗
  ╚══╝╚══╝  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
 """.strip()
 
-SUBTITLE = "WSTUDIO CLI ENGINE  v5.0  |  Core: wcore-X  |  Native Shell Mode"
-
+SUBTITLE = "WSTUDIO CLI ENGINE v5.0 | Natural AI & Meteor Engine"
 CWD = os.getcwd()
 
-# ─── PARTICLE SYSTEM ───
-class ParticleField:
-    def __init__(self, w=90, h=10, density=0.03):
+
+# ─── AUTO SYSTEM SETUP ───
+def ensure_local_ai_service():
+    if shutil.which("ollama") is None:
+        console.print(f"[bold {C_YELLOW}]⚙ Đang cài đặt Ollama...[/bold {C_YELLOW}]")
+        try:
+            subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
+        except Exception:
+            pass
+
+    try:
+        req = urllib.request.Request("http://localhost:11434/api/tags")
+        with urllib.request.urlopen(req, timeout=1.5):
+            pass
+    except Exception:
+        subprocess.Popen("ollama serve > /dev/null 2>&1 &", shell=True)
+        time.sleep(2)
+
+
+# ─── METEOR & STAR ANIMATION ENGINE ───
+class MeteorParticleField:
+    def __init__(self, w=80, h=3):
         self.w, self.h = w, h
         self.stars = []
-        for _ in range(int(w * h * density)):
+        for _ in range(12):
             self.stars.append({
                 'x': random.randint(0, w - 1),
                 'y': random.uniform(0, h - 1),
-                'c': random.choice(['·', '•', '*', '˖', '‧', '✦']),
-                's': random.uniform(0.15, 0.55),
-                'col': random.choice([C_GRAY, C_DARKGRAY, C_ORANGE2, C_WHITE, C_ORANGE]),
+                'c': random.choice(['·', '•', '*', '✦']),
+                's': random.uniform(0.2, 0.5),
+                'col': random.choice([C_GRAY, C_ORANGE2, C_WHITE]),
             })
+        self.meteor_x = 0
+        self.meteor_y = 0
 
     def tick(self):
         for s in self.stars:
@@ -76,15 +113,24 @@ class ParticleField:
             if s['y'] >= self.h:
                 s['y'] = 0
                 s['x'] = random.randint(0, self.w - 1)
+        self.meteor_x = (self.meteor_x + 2) % (self.w + 10)
 
     def render(self):
         grid = [[' ' for _ in range(self.w)] for _ in range(self.h)]
         cols = [[None for _ in range(self.w)] for _ in range(self.h)]
+
         for s in self.stars:
             y, x = int(s['y']), int(s['x'])
             if 0 <= y < self.h and 0 <= x < self.w:
                 grid[y][x] = s['c']
                 cols[y][x] = s['col']
+
+        # Meteor streak
+        mx, my = self.meteor_x - 5, 1
+        if 0 <= my < self.h and 0 <= mx < self.w:
+            grid[my][mx] = '☄'
+            cols[my][mx] = C_CYAN
+
         lines = []
         for y in range(self.h):
             t = Text()
@@ -94,9 +140,8 @@ class ParticleField:
         return lines
 
 
-# ─── RENDERERS ───
-def render_logo_frame(frame, width=90):
-    """Logo với hiệu ứng gradient wave chạy theo frame."""
+# ─── UI RENDERERS ───
+def render_logo_frame(frame, width=80):
     t = Text()
     lines = LOGO.split('\n')
     max_line_len = max(len(l) for l in lines)
@@ -122,46 +167,36 @@ def render_logo():
 def render_input_box():
     inner = Text()
     inner.append("│ ", style=C_ORANGE)
-    inner.append("Gõ lệnh bắt đầu bằng /  ", style=C_GRAY)
-    inner.append("(bất kỳ text khác chỉ là note, không thực thi)", style=Style(color=C_DARKGRAY, dim=True))
-    return Panel(inner, box=ROUNDED, border_style=C_ORANGE2, padding=(0, 2), height=3)
+    inner.append("Nói tự nhiên: ", style=C_WHITE)
+    inner.append('"xem file wcore", "chạy ls", "xoá file.txt" hoặc hỏi AI', style=Style(color=C_GRAY, dim=True))
+    return Panel(inner, box=ROUNDED, border_style=C_ORANGE2, padding=(0, 1), height=3)
 
 
 def render_shortcuts():
     pairs = [
-        ("/read", "đọc file"),
-        ("/write", "tạo/ghi file"),
-        ("/run", "chạy lệnh shell"),
-        ("/rm", "xoá file"),
-        ("/ls", "cây thư mục"),
-        ("/help", "trợ giúp"),
+        ("xem <file>", "đọc"),
+        ("chạy <cmd>", "shell"),
+        ("danh sách", "thư mục"),
+        ("xoá <file>", "xoá"),
+        ("xóa màn hình", "clear"),
+        ("thoát", "exit"),
     ]
     cols = []
     for k, d in pairs:
         t = Text()
         t.append(f"{k} ", style=Style(color=C_ORANGE, bold=True))
-        t.append(d, style=C_GRAY)
+        t.append(f"({d})", style=C_GRAY)
         cols.append(t)
     return Align.center(Columns(cols, equal=True, expand=True))
-
-
-def render_tip():
-    tips = [
-        "Dùng /run <lệnh> để chạy trực tiếp shell, không cần mở terminal khác",
-        "Dùng /read <file> để xem nội dung có tô màu cú pháp (syntax highlight)",
-        "Dùng /write <file> để mở editor nhiều dòng, gõ EOF để lưu",
-        "Dùng /cwd <path> để đổi thư mục làm việc hiện tại",
-    ]
-    t = Text()
-    t.append("● Tip ", style=Style(color=C_ORANGE, bold=True))
-    t.append(random.choice(tips), style=C_GRAY)
-    return Align.center(t)
 
 
 def render_status_bar():
     t = Text()
     t.append(" ⬤ ", style=C_GREEN)
-    t.append("ONLINE", style=Style(color=C_GREEN, bold=True))
+    t.append("LOCAL AI ACTIVE", style=Style(color=C_GREEN, bold=True))
+    t.append("   │   ", style=C_DARKGRAY)
+    t.append("🤖 Model: ", style=C_GRAY)
+    t.append(f"{DEFAULT_MODEL}", style=Style(color=C_PURPLE, bold=True))
     t.append("   │   ", style=C_DARKGRAY)
     t.append("📁 ", style=C_GRAY)
     t.append(f"{CWD}", style=Style(color=C_CYAN))
@@ -169,34 +204,34 @@ def render_status_bar():
 
 
 def render_welcome():
-    """Intro animation (gradient wave + particle rain) rồi màn hình tĩnh."""
-    tw = min(shutil.get_terminal_size().columns, 100)
-    pf = ParticleField(w=tw, h=8, density=0.035)
+    # Xoá màn hình triệt để
+    os.system('clear' if os.name == 'posix' else 'cls')
+    tw = min(shutil.get_terminal_size().columns, 90)
+    pf = MeteorParticleField(w=tw, h=2)
 
-    with Live(console=console, refresh_per_second=18, screen=False) as live:
-        for frame in range(90):
+    # Dùng transient=True để dọn sạch animation khi xong, không để lại vết lặp
+    with Live(console=console, refresh_per_second=15, transient=True) as live:
+        for frame in range(20):
             pf.tick()
             stars = pf.render()
-            body = Text()
-            for sl in stars[:4]:
-                body.append(sl)
-                body.append('\n')
-            body.append(render_logo_frame(frame // 3, tw))
-            for sl in stars[4:]:
-                body.append(sl)
-                body.append('\n')
-            body.append('\n')
-            body.append(Align.center(render_input_box()))
-            body.append('\n')
-            body.append(render_shortcuts())
-            body.append('\n')
-            body.append(render_status_bar())
-            body.append('\n')
-            body.append(render_tip())
-            live.update(body)
-            time.sleep(0.045)
+            
+            star_text = Text()
+            for sl in stars:
+                star_text.append(sl)
+                star_text.append('\n')
 
-    # Static fallback
+            items = [
+                star_text,
+                render_logo_frame(frame, tw),
+                Align.center(render_input_box()),
+                render_shortcuts(),
+                render_status_bar()
+            ]
+            live.update(Group(*items))
+            time.sleep(0.04)
+
+    # In tĩnh DUY NHẤT 1 lần khung hình hoàn chỉnh sau animation
+    os.system('clear' if os.name == 'posix' else 'cls')
     console.print(render_logo())
     console.print(Align.center(render_input_box()))
     console.print()
@@ -204,371 +239,183 @@ def render_welcome():
     console.print()
     console.print(render_status_bar())
     console.print()
-    console.print(render_tip())
-
-
-def spinner_run(label, fn, *args, **kwargs):
-    """Chạy fn với spinner animation màu cam."""
-    with console.status(f"[bold {C_ORANGE}]⚙  {label}...[/bold {C_ORANGE}]", spinner="dots12"):
-        return fn(*args, **kwargs)
 
 
 def flash_ok(msg):
     console.print(f"[bold {C_GREEN}]✔[/bold {C_GREEN}] [white]{msg}[/white]")
 
-
 def flash_err(msg):
     console.print(f"[bold {C_RED}]✘[/bold {C_RED}] [white]{msg}[/white]")
 
 
-def flash_warn(msg):
-    console.print(f"[bold {C_YELLOW}]⚠[/bold {C_YELLOW}] [white]{msg}[/white]")
-
-
-# ─── FILE HELPERS ───
-LANG_MAP = {
-    '.py': 'python', '.js': 'javascript', '.ts': 'typescript', '.jsx': 'jsx', '.tsx': 'tsx',
-    '.json': 'json', '.html': 'html', '.css': 'css', '.md': 'markdown', '.sh': 'bash',
-    '.yml': 'yaml', '.yaml': 'yaml', '.c': 'c', '.cpp': 'cpp', '.java': 'java',
-    '.ino': 'cpp', '.txt': 'text', '.xml': 'xml', '.sql': 'sql', '.go': 'go', '.rs': 'rust',
-}
-
-
-def guess_lang(path: str) -> str:
-    ext = Path(path).suffix.lower()
-    return LANG_MAP.get(ext, 'text')
-
-
-def resolve_path(raw: str) -> Path:
-    raw = raw.strip().strip('"').strip("'")
-    p = Path(raw).expanduser()
-    if not p.is_absolute():
-        p = Path(CWD) / p
-    return p
-
-
-def read_file_content(path: Path, max_bytes=200_000):
-    size = path.stat().st_size
-    truncated = False
-    with open(path, 'rb') as f:
-        raw = f.read(max_bytes + 1)
-    if len(raw) > max_bytes:
-        raw = raw[:max_bytes]
-        truncated = True
+# ─── LOCAL AI ENGINE ───
+def call_ollama_ai(prompt: str, model=DEFAULT_MODEL) -> str:
+    payload = {"model": model, "prompt": prompt, "stream": False}
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(OLLAMA_URL, data=data, headers={'Content-Type': 'application/json'})
+    
     try:
-        text = raw.decode('utf-8')
-    except UnicodeDecodeError:
-        text = raw.decode('utf-8', errors='replace')
-    return text, size, truncated
+        with urllib.request.urlopen(req, timeout=120) as response:
+            res_json = json.loads(response.read().decode('utf-8'))
+            return res_json.get("response", "Không nhận được phản hồi từ AI.")
+    except Exception as e:
+        return f"[LỖI AI]: Không thể kết nối tới Ollama. Lỗi: {e}"
+
+
+# ─── INTENT PARSER ───
+def parse_and_execute_intent(user_inp: str):
+    inp = user_inp.strip()
+    low = inp.lower()
+
+    if low in ('exit', 'quit', 'thoát', 'dừng', '/exit'):
+        console.print(f"\n[bold {C_ORANGE}]👋 Cảm ơn bạn đã sử dụng wcore Engine![/bold {C_ORANGE}]")
+        sys.exit(0)
+
+    if low in ('clear', 'xoá màn hình', 'xóa màn hình', '/clear', 'cls'):
+        render_welcome()
+        return
+
+    # Xem/Đọc file
+    read_keywords = ['xem file', 'đọc file', 'kiểm tra file', 'mở file', 'cat ', 'read ', '/read ']
+    for kw in read_keywords:
+        if low.startswith(kw):
+            cmd_read(inp[len(kw):].strip())
+            return
+
+    # Chạy Shell
+    run_keywords = ['chạy lệnh', 'thực thi', 'chạy ', 'run ', 'exec ', '/run ']
+    for kw in run_keywords:
+        if low.startswith(kw):
+            cmd_run(inp[len(kw):].strip())
+            return
+
+    # Xem thư mục
+    if low in ('ls', 'dir', 'danh sách', 'xem thư mục', 'kiểm tra thư mục', '/ls'):
+        cmd_ls('')
+        return
+
+    # Xóa File
+    rm_keywords = ['xoá file', 'xóa file', 'xoá ', 'xóa ', 'rm ', '/rm ']
+    for kw in rm_keywords:
+        if low.startswith(kw):
+            cmd_rm(inp[len(kw):].strip())
+            return
+
+    # Trợ giúp
+    if low in ('help', 'trợ giúp', 'hướng dẫn', '/help'):
+        cmd_help()
+        return
+
+    # Mặc định gọi AI Local
+    with console.status(f"[bold {C_PURPLE}]🤖 Local AI đang suy nghĩ...[/bold {C_PURPLE}]", spinner="dots12"):
+        ai_reply = call_ollama_ai(inp)
+
+    console.print(Panel(
+        ai_reply, 
+        title=f"[bold {C_PURPLE}]🤖 Local AI ({DEFAULT_MODEL})[/bold {C_PURPLE}]", 
+        border_style=C_PURPLE, 
+        box=ROUNDED
+    ))
 
 
 # ─── COMMAND HANDLERS ───
-def cmd_help():
-    tbl = Table(show_header=True, box=ROUNDED, border_style=C_ORANGE, header_style=f"bold {C_ORANGE}")
-    tbl.add_column("Lệnh")
-    tbl.add_column("Cú pháp")
-    tbl.add_column("Mô tả", style=C_WHITE)
-    rows = [
-        ("/read", "/read <file>", "Đọc & hiển thị nội dung file (có syntax highlight)"),
-        ("/write", "/write <file>", "Mở editor nhiều dòng, gõ EOF để lưu, ghi đè file"),
-        ("/append", "/append <file>", "Mở editor nhiều dòng, nối thêm vào cuối file"),
-        ("/rm", "/rm <file>", "Xoá file (yêu cầu xác nhận)"),
-        ("/ls", "/ls [path]", "Hiển thị cây thư mục"),
-        ("/run", "/run <lệnh shell>", "Chạy lệnh hệ thống trực tiếp, in stdout/stderr"),
-        ("/cwd", "/cwd [path]", "Xem hoặc đổi thư mục làm việc hiện tại"),
-        ("/find", "/find <pattern>", "Tìm file theo pattern (ví dụ *.py)"),
-        ("/info", "/info", "Thông tin về wcore-X"),
-        ("/clear", "/clear", "Xoá màn hình"),
-        ("/exit, /quit", "/exit", "Thoát ứng dụng"),
-    ]
-    for r in rows:
-        tbl.add_row(*r)
-    console.print(Panel(tbl, title="[bold]📖 DANH SÁCH LỆNH[/bold]", border_style=C_ORANGE, box=ROUNDED))
-    console.print(f"[dim]{C_GRAY}Ghi chú: gõ text không bắt đầu bằng / sẽ không thực thi gì, chỉ là note trong terminal.[/dim]")
-
-
-def cmd_info():
-    info = (
-        f"[bold {C_ORANGE}]ENGINE:[/bold {C_ORANGE}]     wcore-X Native CLI\n"
-        f"[bold {C_ORANGE}]DEVELOPER:[/bold {C_ORANGE}]  Wstudio\n"
-        f"[bold {C_ORANGE}]MODE:[/bold {C_ORANGE}]       Shell-native (không dùng AI model / Ollama)\n"
-        f"[bold {C_ORANGE}]INTERFACE:[/bold {C_ORANGE}]  Wstudio TUI Frame Engine v5.0\n"
-        f"[bold {C_ORANGE}]FEATURES:[/bold {C_ORANGE}]   Read / Write / Append / Remove / Run / Find / Tree"
-    )
-    console.print(Panel(info, title="[bold]📊 THÔNG TIN[/bold]", border_style=C_ORANGE, box=ROUNDED))
-
-
 def cmd_read(arg):
     if not arg:
-        flash_err("Thiếu đường dẫn. Cú pháp: /read <file>")
+        flash_err("Cú pháp: xem file <tên_file>")
         return
-    path = resolve_path(arg)
-    if not path.exists():
-        flash_err(f"Không tìm thấy file: {path}")
-        return
-    if path.is_dir():
-        flash_err(f"{path} là thư mục, dùng /ls thay vì /read")
+    p = Path(arg).expanduser()
+    if not p.is_absolute():
+        p = Path(CWD) / p
+    if not p.exists():
+        flash_err(f"Không tìm thấy file: {p}")
         return
     try:
-        text, size, truncated = spinner_run("Đang đọc file", read_file_content, path)
+        text = p.read_text(encoding='utf-8', errors='replace')
+        ext = p.suffix.lower().replace('.', '') or 'text'
+        syntax = Syntax(text, ext, theme="monokai", line_numbers=True)
+        console.print(Panel(syntax, title=f"📄 {p.name}", border_style=C_BLUE, box=ROUNDED))
     except Exception as e:
         flash_err(f"Lỗi đọc file: {e}")
-        return
-
-    lang = guess_lang(str(path))
-    syntax = Syntax(text, lang, theme="monokai", line_numbers=True, word_wrap=False)
-    title = f"[bold {C_ORANGE}]📄 {path.name}[/bold {C_ORANGE}]  [dim]({size} bytes, {lang})[/dim]"
-    console.print(Panel(syntax, title=title, border_style=C_BLUE, box=ROUNDED))
-    if truncated:
-        flash_warn(f"File quá lớn, chỉ hiển thị 200KB đầu tiên.")
-    flash_ok(f"Đã đọc {path}")
-
-
-def multiline_editor():
-    console.print(f"[dim {C_GRAY}]Nhập nội dung nhiều dòng. Gõ [bold {C_ORANGE}]EOF[/bold {C_ORANGE}] trên một dòng riêng để kết thúc.[/dim {C_GRAY}]")
-    lines = []
-    while True:
-        try:
-            line = console.input(f"[{C_DARKGRAY}]{len(lines)+1:>3}│[/{C_DARKGRAY}] ")
-        except (EOFError, KeyboardInterrupt):
-            console.print()
-            return None
-        if line.strip() == "EOF":
-            break
-        lines.append(line)
-    return "\n".join(lines) + ("\n" if lines else "")
-
-
-def cmd_write(arg):
-    if not arg:
-        flash_err("Thiếu đường dẫn. Cú pháp: /write <file>")
-        return
-    path = resolve_path(arg)
-    if path.exists() and path.is_dir():
-        flash_err(f"{path} là thư mục.")
-        return
-    if path.exists():
-        confirm = console.input(f"[{C_YELLOW}]⚠ File đã tồn tại, ghi đè? (y/N): [/{C_YELLOW}]").strip().lower()
-        if confirm != 'y':
-            flash_warn("Đã hủy.")
-            return
-    content = multiline_editor()
-    if content is None:
-        flash_warn("Đã hủy.")
-        return
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding='utf-8')
-    except Exception as e:
-        flash_err(f"Lỗi ghi file: {e}")
-        return
-    flash_ok(f"Đã lưu {path} ({len(content)} bytes)")
-
-
-def cmd_append(arg):
-    if not arg:
-        flash_err("Thiếu đường dẫn. Cú pháp: /append <file>")
-        return
-    path = resolve_path(arg)
-    if path.is_dir():
-        flash_err(f"{path} là thư mục.")
-        return
-    content = multiline_editor()
-    if content is None:
-        flash_warn("Đã hủy.")
-        return
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'a', encoding='utf-8') as f:
-            f.write(content)
-    except Exception as e:
-        flash_err(f"Lỗi nối file: {e}")
-        return
-    flash_ok(f"Đã nối thêm {len(content)} bytes vào {path}")
-
-
-def cmd_rm(arg):
-    if not arg:
-        flash_err("Thiếu đường dẫn. Cú pháp: /rm <file|thư mục>")
-        return
-    path = resolve_path(arg)
-    if not path.exists():
-        flash_err(f"Không tìm thấy: {path}")
-        return
-    kind = "thư mục" if path.is_dir() else "file"
-    confirm = console.input(f"[{C_RED}]⚠ Xoá {kind} '{path}'? Không thể hoàn tác! (y/N): [/{C_RED}]").strip().lower()
-    if confirm != 'y':
-        flash_warn("Đã hủy.")
-        return
-    try:
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink()
-    except Exception as e:
-        flash_err(f"Lỗi xoá: {e}")
-        return
-    flash_ok(f"Đã xoá {path}")
-
-
-def build_tree(path: Path, tree: Tree, depth=0, max_depth=3, max_entries=200):
-    if depth >= max_depth:
-        return
-    try:
-        entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
-    except PermissionError:
-        return
-    count = 0
-    for entry in entries:
-        if entry.name.startswith('.') and entry.name not in ('.env',):
-            continue
-        if entry.name in ('node_modules', '__pycache__', '.git', 'venv'):
-            continue
-        count += 1
-        if count > max_entries:
-            tree.add(f"[dim]... còn nhiều hơn[/dim]")
-            break
-        if entry.is_dir():
-            branch = tree.add(f"[bold {C_BLUE}]📁 {entry.name}[/bold {C_BLUE}]")
-            build_tree(entry, branch, depth + 1, max_depth, max_entries)
-        else:
-            branch_color = C_WHITE
-            tree.add(f"[{branch_color}]📄 {entry.name}[/{branch_color}]")
-
-
-def cmd_ls(arg):
-    target = resolve_path(arg) if arg else Path(CWD)
-    if not target.exists():
-        flash_err(f"Không tìm thấy: {target}")
-        return
-    if target.is_file():
-        cmd_read(arg)
-        return
-    tree = Tree(f"[bold {C_ORANGE}]📁 {target}[/bold {C_ORANGE}]")
-    spinner_run("Đang quét thư mục", build_tree, target, tree)
-    console.print(Panel(tree, border_style=C_ORANGE2, box=ROUNDED))
-
-
-def cmd_find(arg):
-    if not arg:
-        flash_err("Thiếu pattern. Cú pháp: /find <pattern> (vd: *.py)")
-        return
-    root = Path(CWD)
-    matches = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in ('node_modules', '__pycache__', '.git', 'venv') and not d.startswith('.')]
-        for fname in filenames:
-            if fnmatch.fnmatch(fname, arg):
-                matches.append(str(Path(dirpath) / fname))
-        if len(matches) >= 500:
-            break
-    if not matches:
-        flash_warn(f"Không tìm thấy file khớp '{arg}'")
-        return
-    t = Text()
-    for m in matches[:100]:
-        rel = os.path.relpath(m, root)
-        t.append("• ", style=C_ORANGE)
-        t.append(rel, style=C_WHITE)
-        t.append("\n")
-    console.print(Panel(t, title=f"[bold {C_ORANGE}]🔎 {len(matches)} kết quả cho '{arg}'[/bold {C_ORANGE}]", border_style=C_GREEN, box=ROUNDED))
-
-
-def cmd_cwd(arg):
-    global CWD
-    if not arg:
-        console.print(f"[bold {C_ORANGE}]📁[/bold {C_ORANGE}] {CWD}")
-        return
-    path = resolve_path(arg)
-    if not path.exists() or not path.is_dir():
-        flash_err(f"Không tìm thấy thư mục: {path}")
-        return
-    CWD = str(path)
-    os.chdir(CWD)
-    flash_ok(f"Đã chuyển tới {CWD}")
 
 
 def cmd_run(arg):
     if not arg:
-        flash_err("Thiếu lệnh. Cú pháp: /run <lệnh shell>")
+        flash_err("Cú pháp: chạy <lệnh_shell>")
         return
     console.print(Rule(f"[bold {C_ORANGE}]▶ RUNNING[/bold {C_ORANGE}]", style=C_ORANGE2))
-    console.print(f"[dim {C_GRAY}]$ {arg}[/dim {C_GRAY}]")
-    t0 = time.time()
     try:
-        with console.status(f"[bold {C_ORANGE}]⚙  Đang thực thi...[/bold {C_ORANGE}]", spinner="dots12"):
-            proc = subprocess.run(
-                arg, shell=True, cwd=CWD,
-                capture_output=True, text=True, timeout=300
-            )
-    except subprocess.TimeoutExpired:
-        flash_err("Lệnh chạy quá 300s, đã bị hủy.")
-        return
+        proc = subprocess.run(arg, shell=True, cwd=CWD, capture_output=True, text=True, timeout=120)
+        if proc.stdout:
+            console.print(Panel(proc.stdout.rstrip(), title="stdout", border_style=C_GREEN, box=ROUNDED))
+        if proc.stderr:
+            console.print(Panel(proc.stderr.rstrip(), title="stderr", border_style=C_RED, box=ROUNDED))
+        if proc.returncode == 0:
+            flash_ok("Thực thi thành công")
+        else:
+            flash_err(f"Mã lỗi exit code {proc.returncode}")
     except Exception as e:
-        flash_err(f"Lỗi thực thi: {e}")
+        flash_err(f"Lỗi: {e}")
+
+
+def cmd_ls(arg):
+    target = Path(arg) if arg else Path(CWD)
+    if not target.exists():
+        flash_err(f"Không tìm thấy: {target}")
         return
-    elapsed = time.time() - t0
-
-    if proc.stdout:
-        console.print(Panel(proc.stdout.rstrip(), title="[bold]stdout[/bold]", border_style=C_GREEN, box=ROUNDED))
-    if proc.stderr:
-        console.print(Panel(proc.stderr.rstrip(), title="[bold]stderr[/bold]", border_style=C_RED, box=ROUNDED))
-    if not proc.stdout and not proc.stderr:
-        console.print(f"[dim]{C_GRAY}(không có output)[/dim]")
-
-    if proc.returncode == 0:
-        flash_ok(f"Hoàn thành trong {elapsed:.2f}s (exit code 0)")
-    else:
-        flash_err(f"Thoát với exit code {proc.returncode} sau {elapsed:.2f}s")
-
-
-COMMANDS = {
-    '/help': cmd_help,
-    '/info': cmd_info,
-}
-
-COMMANDS_WITH_ARG = {
-    '/read': cmd_read,
-    '/cat': cmd_read,
-    '/write': cmd_write,
-    '/append': cmd_append,
-    '/rm': cmd_rm,
-    '/del': cmd_rm,
-    '/ls': cmd_ls,
-    '/find': cmd_find,
-    '/cwd': cmd_cwd,
-    '/cd': cmd_cwd,
-    '/run': cmd_run,
-    '/exec': cmd_run,
-}
+    tree = Tree(f"[bold {C_ORANGE}]📁 {target.name}[/bold {C_ORANGE}]")
+    try:
+        for p in sorted(target.iterdir()):
+            if p.name.startswith('.'):
+                continue
+            if p.is_dir():
+                tree.add(f"[bold {C_BLUE}]📁 {p.name}[/bold {C_BLUE}]")
+            else:
+                tree.add(f"[white]📄 {p.name}[/white]")
+        console.print(Panel(tree, border_style=C_ORANGE2, box=ROUNDED))
+    except Exception as e:
+        flash_err(f"Lỗi: {e}")
 
 
-def handle_command(raw: str):
-    parts = raw.strip().split(maxsplit=1)
-    cmd = parts[0].lower()
-    arg = parts[1] if len(parts) > 1 else ""
-
-    if cmd in ('/exit', '/quit'):
-        console.print(f"\n[bold {C_ORANGE}]👋 Cảm ơn bạn đã sử dụng wcore-X![/bold {C_ORANGE}]")
-        sys.exit(0)
-    elif cmd == '/clear':
-        console.clear()
-        return 'clear'
-    elif cmd in COMMANDS:
-        COMMANDS[cmd]()
-    elif cmd in COMMANDS_WITH_ARG:
-        COMMANDS_WITH_ARG[cmd](arg.strip())
-    else:
-        flash_err(f"Không nhận diện lệnh '{cmd}'. Gõ /help để xem danh sách.")
-    console.print(f"[dim]{'─' * min(shutil.get_terminal_size().columns, 65)}[/dim]\n")
-    return None
+def cmd_rm(arg):
+    if not arg:
+        flash_err("Cú pháp: xoá file <tên_file>")
+        return
+    p = Path(arg)
+    if not p.exists():
+        flash_err(f"Không thấy: {p}")
+        return
+    try:
+        if p.is_dir():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
+        flash_ok(f"Đã xoá {p}")
+    except Exception as e:
+        flash_err(f"Lỗi xoá: {e}")
 
 
-# ─── MAIN LOOP ───
+def cmd_help():
+    tbl = Table(show_header=True, box=ROUNDED, border_style=C_ORANGE, header_style=f"bold {C_ORANGE}")
+    tbl.add_column("Khẩu lệnh tiếng Việt")
+    tbl.add_column("Hành động", style=C_WHITE)
+    rows = [
+        ("xem file <file>", "Xem nội dung file có tô màu syntax"),
+        ("chạy <lệnh>", "Chạy lệnh Shell hệ thống"),
+        ("danh sách", "Xem cấu trúc thư mục hiện tại"),
+        ("xoá file <file>", "Xoá file hoặc thư mục"),
+        ("xóa màn hình", "Làm sạch màn hình terminal"),
+        ("Nhập text bất kỳ", "Trò chuyện & nhờ AI viết code"),
+        ("thoát", "Đóng chương trình"),
+    ]
+    for r in rows:
+        tbl.add_row(*r)
+    console.print(Panel(tbl, title="[bold]📖 HƯỚNG DẪN SỬ DỤNG[/bold]", border_style=C_ORANGE, box=ROUNDED))
+
+
+# ─── MAIN ENTRYPOINT ───
 def main():
-    console.clear()
+    ensure_local_ai_service()
     render_welcome()
-    console.print(f"\n[dim]Gõ /help để xem danh sách lệnh. Gõ /exit để thoát.[/dim]\n")
 
     while True:
         try:
@@ -576,14 +423,8 @@ def main():
             if not user_inp:
                 continue
 
-            if user_inp.startswith('/'):
-                result = handle_command(user_inp)
-                if result == 'clear':
-                    render_welcome()
-                continue
-
-            # Không phải lệnh -> chỉ là note, không thực thi
-            console.print(f"[dim {C_GRAY}]· note: \"{user_inp}\" (không bắt đầu bằng / nên không thực thi gì)[/dim {C_GRAY}]\n")
+            parse_and_execute_intent(user_inp)
+            console.print(f"[dim]{'─' * min(shutil.get_terminal_size().columns, 65)}[/dim]\n")
 
         except KeyboardInterrupt:
             console.print(f"\n[bold {C_ORANGE}]👋 Tạm biệt![/bold {C_ORANGE}]")
