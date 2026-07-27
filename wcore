@@ -12,7 +12,7 @@ from pathlib import Path
 
 # ─── RICH IMPORTS ───
 try:
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
     from rich.align import Align
@@ -27,7 +27,7 @@ try:
     from rich.markdown import Markdown
 except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "rich"], check=True)
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
     from rich.align import Align
@@ -47,32 +47,21 @@ console = Console()
 OLLAMA_LOCAL_URL = "http://localhost:11434"
 
 RAINBOW_COLORS = [
-    "#ff4444",  # Đỏ
-    "#ff7700",  # Cam
-    "#ffcc00",  # Vàng
-    "#4ade80",  # Xanh lá
-    "#22d3ee",  # Xanh dương
-    "#60a5fa",  # Chàm
-    "#c084fc"   # Tím
+    "#ff4444", "#ff7700", "#ffcc00", "#4ade80", 
+    "#22d3ee", "#60a5fa", "#c084fc"
 ]
 
-# ─── 12+ LOCAL MODELS (TỪ NHẸ ĐẾN NẶNG - 100% OFFLINE) ───
 AVAILABLE_MODELS = {
-    # --- PHÂN KHÚC SIÊU NHẸ (RAM < 2GB) ---
     "1":  ("qwen2.5:0.5b",         "⚡ Siêu nhẹ",   "~0.5 GB RAM │ Phản hồi siêu tốc, cực nhẹ"),
     "2":  ("llama3.2:1b",          "⚡ Siêu nhẹ",   "~1.2 GB RAM │ Meta AI thế hệ mới"),
     "3":  ("qwen2.5:1.5b",         "⚡ Siêu nhẹ",   "~1.5 GB RAM │ Cân bằng tuyệt vời cho máy yếu"),
     "4":  ("deepseek-r1:1.5b",     "🧠 Suy luận",   "~1.5 GB RAM │ DeepSeek R1 Logic & Reasoning"),
     "5":  ("qwen2.5-coder:1.5b",   "💻 Lập trình",  "~1.5 GB RAM │ Chuyên tạo file & viết code nhẹ"),
-
-    # --- PHÂN KHÚC TRUNG BÌNH (RAM 4GB - 8GB) ---
     "6":  ("llama3.2:3b",          "⚖️ Trung bình", "~2.5 GB RAM │ Llama 3.2 3B đa năng"),
     "7":  ("deepseek-r1:7b",       "🧠 Suy luận",   "~5.0 GB RAM │ DeepSeek R1 7B (Logic sâu)"),
     "8":  ("qwen2.5:7b",           "⚖️ Trung bình", "~5.0 GB RAM │ Qwen 2.5 7B xuất sắc"),
     "9":  ("qwen2.5-coder:7b",     "💻 Lập trình",  "~5.0 GB RAM │ Vua viết code Local"),
     "10": ("mistral:7b",           "⚖️ Trung bình", "~5.0 GB RAM │ Mistral 7B Instruct v0.3"),
-
-    # --- PHÂN KHÚC NẶNG & CAO CẤP (RAM 8GB - 40GB+) ---
     "11": ("gemma2:9b",            "🔥 Nặng",       "~7.0 GB RAM │ Google Gemma 2 9B"),
     "12": ("deepseek-r1:14b",      "🧠 Suy luận",   "~10.0 GB RAM │ DeepSeek R1 14B Siêu trí tuệ"),
     "13": ("qwen2.5:14b",          "🔥 Nặng",       "~10.0 GB RAM │ Qwen 2.5 14B Đa nhiệm mạnh"),
@@ -98,20 +87,18 @@ LOGO = """
  ╚══╝╚══╝  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
 """.strip()
 
-SUBTITLE = "WSTUDIO CLI v10.0 | Pure Local Ollama Engine & Rainbow Root System"
+SUBTITLE = "WSTUDIO CLI v11.0 | High-Performance Root Engine"
 CWD = os.getcwd()
-ANIM_FRAME = 0
 
 
-# ─── HỆ THỐNG ĐO RAM TRỰC TIẾP ───
+# ─── HỆ THỐNG ĐO RAM TỐI ƯU ───
 def get_system_ram_usage():
     try:
         import psutil
         mem = psutil.virtual_memory()
         used_gb = mem.used / (1024 ** 3)
         total_gb = mem.total / (1024 ** 3)
-        percent = mem.percent
-        return f"{used_gb:.1f}GB / {total_gb:.1f}GB ({percent}%)"
+        return f"{used_gb:.1f}GB / {total_gb:.1f}GB ({mem.percent}%)"
     except ImportError:
         try:
             with open('/proc/meminfo', 'r') as f:
@@ -125,7 +112,7 @@ def get_system_ram_usage():
             return "RAM: N/A"
 
 
-# ─── TỰ ĐỘNG CẤU HÌNH MÔI TRƯỜNG ───
+# ─── AUTO SETUP ───
 def ensure_environment():
     try:
         import psutil
@@ -133,15 +120,13 @@ def ensure_environment():
         subprocess.run([sys.executable, "-m", "pip", "install", "psutil"], check=True)
 
     if shutil.which("ollama") is None:
+        console.print(f"[bold {C_YELLOW}]⚙ Đang cài đặt Ollama API...[/bold {C_YELLOW}]")
         try:
             subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
         except Exception:
             pass
-
     try:
-        req = urllib.request.Request(f"{OLLAMA_LOCAL_URL}/api/tags")
-        with urllib.request.urlopen(req, timeout=1.5):
-            pass
+        urllib.request.urlopen(urllib.request.Request(f"{OLLAMA_LOCAL_URL}/api/tags"), timeout=1.5)
     except Exception:
         subprocess.Popen("ollama serve > /dev/null 2>&1 &", shell=True)
         time.sleep(2)
@@ -149,41 +134,30 @@ def ensure_environment():
 
 def get_installed_ollama_models() -> list:
     try:
-        req = urllib.request.Request(f"{OLLAMA_LOCAL_URL}/api/tags")
-        with urllib.request.urlopen(req, timeout=2) as res:
-            data = json.loads(res.read().decode('utf-8'))
-            return [m.get('name') for m in data.get('models', [])]
+        with urllib.request.urlopen(urllib.request.Request(f"{OLLAMA_LOCAL_URL}/api/tags"), timeout=2) as res:
+            return [m.get('name') for m in json.loads(res.read().decode('utf-8')).get('models', [])]
     except Exception:
         return []
 
 
-# ─── METEOR RAINBOW ANIMATION ENGINE ───
+# ─── METEOR RAINBOW ENGINE (MƯỢT 30FPS) ───
 class MeteorRainbowField:
-    def __init__(self, w=80, h=3):
+    def __init__(self, w=80, h=4):
         self.w, self.h = w, h
-        self.stars = []
-        for _ in range(22):
-            self.stars.append({
-                'x': random.randint(0, w - 1),
-                'y': random.uniform(0, h - 1),
-                'c': random.choice(['·', '•', '*', '✦', '✧', '★']),
-                's': random.uniform(0.15, 0.4),
-                'col': random.choice(RAINBOW_COLORS),
-            })
-        self.meteor_x = -5
-        self.meteor_y = random.randint(0, self.h - 1)
+        self.stars = [{'x': random.randint(0, w - 1), 'y': random.uniform(0, h - 1), 
+                       'c': random.choice(['·', '•', '*', '✦', '✧', '★']), 
+                       's': random.uniform(0.1, 0.3), 'col': random.choice(RAINBOW_COLORS)} 
+                      for _ in range(25)]
+        self.meteor_x, self.meteor_y = -5, random.randint(0, h - 1)
 
     def tick(self):
         for s in self.stars:
             s['y'] += s['s']
             if s['y'] >= self.h:
-                s['y'] = 0
-                s['x'] = random.randint(0, self.w - 1)
-        
-        self.meteor_x += 3
+                s['y'], s['x'] = 0, random.randint(0, self.w - 1)
+        self.meteor_x += 3.5
         if self.meteor_x > self.w + 12:
-            self.meteor_x = -5
-            self.meteor_y = random.randint(0, self.h - 1)
+            self.meteor_x, self.meteor_y = -5, random.randint(0, self.h - 1)
 
     def render(self):
         grid = [[' ' for _ in range(self.w)] for _ in range(self.h)]
@@ -192,169 +166,92 @@ class MeteorRainbowField:
         for s in self.stars:
             y, x = int(s['y']), int(s['x'])
             if 0 <= y < self.h and 0 <= x < self.w:
-                grid[y][x] = s['c']
-                cols[y][x] = s['col']
+                grid[y][x], cols[y][x] = s['c'], s['col']
 
         mx, my = int(self.meteor_x), int(self.meteor_y)
-        rainbow_trail = [('#ff4444', '☄'), ('#ffaa00', '≡'), ('#ffcc00', '-'), ('#4ade80', '·')]
-        for i, (color, char) in enumerate(rainbow_trail):
+        for i, (color, char) in enumerate([('#ff4444', '☄'), ('#ffaa00', '≡'), ('#ffcc00', '-'), ('#4ade80', '·')]):
             tx = mx - i
             if 0 <= my < self.h and 0 <= tx < self.w:
-                grid[my][tx] = char
-                cols[my][tx] = color
+                grid[my][tx], cols[my][tx] = char, color
 
-        lines = []
-        for y in range(self.h):
-            t = Text()
-            for x in range(self.w):
-                t.append(grid[y][x], style=cols[y][x] or C_BG)
-            lines.append(t)
-        return lines
+        return [Text("".join(grid[y]), style=C_BG).assemble(*[(grid[y][x], Style(color=cols[y][x])) for x in range(self.w) if cols[y][x]]) for y in range(self.h)]
 
 
-# ─── UI RENDERERS RAINBOW ───
-def render_logo_rainbow_frame(frame, width=80):
+# ─── UI COMPONENTS ───
+def render_logo(frame, width=80):
     t = Text()
     lines = LOGO.split('\n')
-    max_line_len = max(len(l) for l in lines)
-    pad = max(0, (width - max_line_len) // 2)
+    pad = max(0, (width - max(len(l) for l in lines)) // 2)
     for li, line in enumerate(lines):
-        color = RAINBOW_COLORS[(frame + li) % len(RAINBOW_COLORS)]
-        t.append(" " * pad + line, style=Style(color=color, bold=True))
-        t.append('\n')
-    sub_pad = max(0, (width - len(SUBTITLE)) // 2)
-    t.append(" " * sub_pad + f"{SUBTITLE}\n", style=Style(color=C_GRAY, dim=True))
+        t.append(" " * pad + line + '\n', style=Style(color=RAINBOW_COLORS[(frame + li) % len(RAINBOW_COLORS)], bold=True))
+    t.append(" " * max(0, (width - len(SUBTITLE)) // 2) + f"{SUBTITLE}\n", style=Style(color=C_GRAY, dim=True))
     return t
 
-
 def render_input_box():
-    inner = Text()
-    inner.append("│ ", style=RAINBOW_COLORS[0])
-    inner.append("Nói tự nhiên (100% Local Offline): ", style=C_WHITE)
-    inner.append('"tạo file main.py", "đổi model", "chạy ls"', style=Style(color=C_GRAY, dim=True))
+    inner = Text().append("│ ", style=RAINBOW_COLORS[0]).append("Nói tự nhiên (100% Local Offline): ", style=C_WHITE).append('"tạo file main.py", "đổi model", "chạy ls"', style=Style(color=C_GRAY, dim=True))
     return Panel(inner, box=ROUNDED, border_style=RAINBOW_COLORS[3], padding=(0, 1), height=3)
 
-
 def render_shortcuts():
-    pairs = [
-        ("đổi model", "12+ AI Local"),
-        ("xem <file>", "Đọc code"),
-        ("chạy <cmd>", "Shell System"),
-        ("tạo file", "AI tự tạo file"),
-        ("danh sách", "Thư mục"),
-        ("thoát", "Exit"),
-    ]
-    cols = []
-    for idx, (k, d) in enumerate(pairs):
-        t = Text()
-        col = RAINBOW_COLORS[idx % len(RAINBOW_COLORS)]
-        t.append(f"{k} ", style=Style(color=col, bold=True))
-        t.append(f"({d})", style=C_GRAY)
-        cols.append(t)
+    pairs = [("đổi model", "AI Local"), ("xem <file>", "Đọc code"), ("chạy <cmd>", "Shell"), ("tạo file", "AI viết code"), ("danh sách", "Thư mục"), ("thoát", "Exit")]
+    cols = [Text().append(f"{k} ", style=Style(color=RAINBOW_COLORS[idx % len(RAINBOW_COLORS)], bold=True)).append(f"({d})", style=C_GRAY) for idx, (k, d) in enumerate(pairs)]
     return Align.center(Columns(cols, equal=True, expand=True))
 
-
 def render_status_bar():
-    ram_info = get_system_ram_usage()
-    t = Text()
-    t.append(" ⬤ ", style=C_GREEN)
-    t.append("OFFLINE LOCAL AI", style=Style(color=C_GREEN, bold=True))
-    t.append("   │   ", style=C_DARKGRAY)
-    t.append("🤖 AI: ", style=C_GRAY)
-    t.append(f"{CURRENT_MODEL}", style=Style(color=RAINBOW_COLORS[5], bold=True))
-    t.append("   │   ", style=C_DARKGRAY)
-    t.append("🧠 RAM: ", style=C_GRAY)
-    t.append(f"{ram_info}", style=Style(color=RAINBOW_COLORS[2], bold=True))
-    t.append("   │   ", style=C_DARKGRAY)
-    t.append("📁 ", style=C_GRAY)
-    t.append(f"{CWD}", style=Style(color=C_CYAN))
+    t = Text().append(" ⬤ ", style=C_GREEN).append("OFFLINE AI READY", style=Style(color=C_GREEN, bold=True)).append(" │ ", style=C_DARKGRAY).append("🤖 Model: ", style=C_GRAY).append(f"{CURRENT_MODEL}", style=Style(color=RAINBOW_COLORS[5], bold=True)).append(" │ ", style=C_DARKGRAY).append("🧠 RAM: ", style=C_GRAY).append(f"{get_system_ram_usage()}", style=Style(color=RAINBOW_COLORS[2], bold=True)).append(" │ ", style=C_DARKGRAY).append("📁 ", style=C_GRAY).append(f"{CWD}", style=Style(color=C_CYAN))
     return Align.center(t)
-
-
-def draw_header():
-    global ANIM_FRAME
-    ANIM_FRAME += 1
-    tw = min(shutil.get_terminal_size().columns, 90)
-    pf = MeteorRainbowField(w=tw, h=3)
-    for _ in range(ANIM_FRAME % 12):
-        pf.tick()
-
-    star_text = Text()
-    for sl in pf.render():
-        star_text.append(sl)
-        star_text.append('\n')
-
-    console.print(star_text)
-    console.print(render_logo_rainbow_frame(ANIM_FRAME, tw))
-    console.print(Align.center(render_input_box()))
-    console.print()
-    console.print(render_shortcuts())
-    console.print()
-    console.print(render_status_bar())
-    console.print()
-
 
 def render_welcome():
     os.system('clear' if os.name == 'posix' else 'cls')
-    draw_header()
+    tw = min(shutil.get_terminal_size().columns, 90)
+    pf = MeteorRainbowField(w=tw, h=4)
+    
+    # Smooth 30FPS Intro Animation
+    with Live(console=console, refresh_per_second=30, transient=True) as live:
+        for frame in range(35):
+            pf.tick()
+            star_text = Text()
+            for sl in pf.render(): star_text.append(sl).append('\n')
+            live.update(Group(star_text, render_logo(frame, tw), Align.center(render_input_box()), Text(""), render_shortcuts(), Text(""), render_status_bar()))
+            time.sleep(0.03)
+
+    # Static final render
+    console.print(Text("").join(pf.render()))
+    console.print(render_logo(35, tw))
+    console.print(Align.center(render_input_box()), "\n", render_shortcuts(), "\n", render_status_bar(), "\n")
+
+def flash_ok(msg): console.print(f"[bold {C_GREEN}]✔[/bold {C_GREEN}] [white]{msg}[/white]")
+def flash_err(msg): console.print(f"[bold {C_RED}]✘[/bold {C_RED}] [white]{msg}[/white]")
 
 
-def flash_ok(msg):
-    console.print(f"[bold {C_GREEN}]✔[/bold {C_GREEN}] [white]{msg}[/white]")
-
-def flash_err(msg):
-    console.print(f"[bold {C_RED}]✘[/bold {C_RED}] [white]{msg}[/white]")
-
-
-# ─── MENU ĐỔI MODEL LOCAL OLLAMA (100% OFFLINE) ───
+# ─── THAY ĐỔI MODEL ───
 def change_model_menu():
     global CURRENT_MODEL
-    installed_models = get_installed_ollama_models()
+    installed = get_installed_ollama_models()
+    tbl = Table(title="[bold cyan]🌈 DANH SÁCH LOCAL AI (NHẸ ➔ NẶNG)[/bold cyan]", box=ROUNDED, border_style=RAINBOW_COLORS[4])
+    for c, s in zip(["STT", "Model Name", "Phân loại", "Trạng thái", "Yêu cầu RAM"], [RAINBOW_COLORS[0], RAINBOW_COLORS[5], RAINBOW_COLORS[2], C_GREEN, C_WHITE]):
+        tbl.add_column(c, style=s, justify="center" if c not in ["Model Name", "Yêu cầu RAM"] else "left")
 
-    tbl = Table(title="[bold cyan]🌈 DANH SÁCH FULL MODEL LOCAL OLLAMA (NHẸ ➔ NẶNG)[/bold cyan]", box=ROUNDED, border_style=RAINBOW_COLORS[4])
-    tbl.add_column("STT", style=RAINBOW_COLORS[0], justify="center")
-    tbl.add_column("Model Name", style=RAINBOW_COLORS[5])
-    tbl.add_column("Phân loại", style=RAINBOW_COLORS[2], justify="center")
-    tbl.add_column("Trạng thái Local", style=C_GREEN, justify="center")
-    tbl.add_column("Yêu cầu RAM & Mô tả", style=C_WHITE)
-
-    for k, v in AVAILABLE_MODELS.items():
-        m_name, m_type, m_desc = v[0], v[1], v[2]
-        is_ready = any(m_name in m for m in installed_models)
-        status = "[bold green]✔ Đã tải sẵn[/bold green]" if is_ready else "[dim yellow]⬇ Cần pull[/dim yellow]"
+    for k, (m_name, m_type, m_desc) in AVAILABLE_MODELS.items():
+        status = "[bold green]✔ Đã tải[/bold green]" if any(m_name in m for m in installed) else "[dim yellow]⬇ Cần pull[/dim yellow]"
         tbl.add_row(k, m_name, m_type, status, m_desc)
 
     console.print(tbl)
-    choice = console.input(f"\n[bold yellow]Chọn số STT model muốn dùng (hoặc nhập tên tùy chỉnh): [/bold yellow]").strip()
+    choice = console.input(f"\n[bold yellow]Chọn STT model muốn dùng (hoặc gõ tên tùy chỉnh): [/bold yellow]").strip()
+    if not choice: return
     
-    if not choice:
-        return
-
-    if choice in AVAILABLE_MODELS:
-        m_name = AVAILABLE_MODELS[choice][0]
-    else:
-        m_name = choice
-
-    if not any(m_name in m for m in installed_models):
-        console.print(f"\n[bold yellow]📦 Đang tự động pull model '{m_name}' qua Ollama...[/bold yellow]")
-        res = subprocess.run(f"ollama pull {m_name}", shell=True)
-        if res.returncode != 0:
-            flash_err("Tải model thất bại. Vui lòng kiểm tra lại tên model!")
-            return
-
+    m_name = AVAILABLE_MODELS.get(choice, (choice,))[0]
+    if not any(m_name in m for m in installed):
+        console.print(f"\n[bold yellow]📦 Đang tự động pull model '{m_name}' (Có thể mất vài phút)...[/bold yellow]")
+        if subprocess.run(f"ollama pull {m_name}", shell=True).returncode != 0:
+            return flash_err("Tải thất bại. Kiểm tra lại tên hoặc mạng!")
     CURRENT_MODEL = m_name
     flash_ok(f"Đã chuyển model sang: [bold {RAINBOW_COLORS[5]}]{CURRENT_MODEL}[/bold {RAINBOW_COLORS[5]}]")
 
 
-# ─── HỆ THỐNG ROOT AI AUTO-EXECUTION (TỰ TẠO FILE, NHÚNG CODE, CHẠY LỆNH) ───
+# ─── ROOT EXECUTION TỰ ĐỘNG ───
 def execute_root_ai_actions(ai_response: str):
-    lines = ai_response.split('\n')
-    in_code_block = False
-    current_code = []
-    current_lang = ""
-    target_filename = "auto_script.py"
-
-    for line in lines:
+    in_code_block, current_code, current_lang, target_filename = False, [], "python", "auto_script.py"
+    for line in ai_response.split('\n'):
         if line.startswith("```"):
             if in_code_block:
                 in_code_block = False
@@ -364,245 +261,121 @@ def execute_root_ai_actions(ai_response: str):
                 in_code_block = True
                 parts = line.strip("`").split()
                 current_lang = parts[0] if parts else "python"
-                if len(parts) > 1:
-                    target_filename = parts[1]
+                if len(parts) > 1: target_filename = parts[1]
             continue
-
-        if in_code_block:
-            current_code.append(line)
-
+        if in_code_block: current_code.append(line)
 
 def execute_extracted_payload(lang: str, code: str, filename: str):
     console.print(f"\n[bold yellow]⚡ [ROOT AUTO-EXEC] Đang xử lý khối mã nguồn ({lang})...[/bold yellow]")
-    
     if lang in ['python', 'sh', 'bash', 'html', 'javascript', 'txt', 'json']:
-        if not filename or filename == "auto_script.py":
-            ext_map = {'python': '.py', 'sh': '.sh', 'bash': '.sh', 'html': '.html', 'javascript': '.js', 'txt': '.txt', 'json': '.json'}
-            filename = f"root_output{ext_map.get(lang, '.txt')}"
-        
+        filename = filename if filename != "auto_script.py" else f"root_output{'.py' if lang == 'python' else '.sh' if lang in ['sh','bash'] else '.txt'}"
         try:
-            p = Path(CWD) / filename
-            p.write_text(code, encoding='utf-8')
-            flash_ok(f"Đã tạo & nhúng file mã nguồn thành công: {filename}")
+            (Path(CWD) / filename).write_text(code, encoding='utf-8')
+            flash_ok(f"Đã tạo file: {filename}")
         except Exception as e:
-            flash_err(f"Lỗi tạo file: {e}")
+            return flash_err(f"Lỗi tạo file: {e}")
 
     if lang in ['python', 'sh', 'bash']:
-        confirm = console.input(f"[bold cyan]Quyền Root: Bạn có muốn chạy lệnh file '{filename}' ngay không? (y/n): [/bold cyan]").strip().lower()
-        if confirm == 'y':
+        if console.input(f"[bold cyan]Quyền Root: Chạy lệnh file '{filename}' ngay không? (y/n): [/bold cyan]").strip().lower() == 'y':
             console.print(Rule(f"[bold {RAINBOW_COLORS[1]}]▶ ROOT EXECUTION RUNNING[/bold {RAINBOW_COLORS[1]}]"))
-            try:
-                cmd = f"python3 {filename}" if lang == 'python' else f"bash {filename}"
-                proc = subprocess.run(cmd, shell=True, cwd=CWD, capture_output=True, text=True, timeout=60)
-                if proc.stdout:
-                    console.print(Panel(proc.stdout.rstrip(), title="stdout (Root)", border_style=C_GREEN, box=ROUNDED))
-                if proc.stderr:
-                    console.print(Panel(proc.stderr.rstrip(), title="stderr (Root)", border_style=C_RED, box=ROUNDED))
-                flash_ok("Thực thi hoàn tất!")
-            except Exception as e:
-                flash_err(f"Lỗi thực thi: {e}")
+            proc = subprocess.run(f"python3 {filename}" if lang == 'python' else f"bash {filename}", shell=True, cwd=CWD, capture_output=True, text=True)
+            if proc.stdout: console.print(Panel(proc.stdout.rstrip(), title="stdout", border_style=C_GREEN, box=ROUNDED))
+            if proc.stderr: console.print(Panel(proc.stderr.rstrip(), title="stderr", border_style=C_RED, box=ROUNDED))
 
 
-# ─── LOCAL STREAMING ENGINE VỚI ĐO RAM & TOKEN/S THỜI GIAN THỰC ───
+# ─── TỐI ƯU HÓA LUỒNG STREAMING & ĐO RAM ───
 def call_ollama_stream(prompt: str):
-    url = f"{OLLAMA_LOCAL_URL}/api/chat"
-    payload = {
-        "model": CURRENT_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": True
-    }
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-
-    full_text = ""
-    token_count = 0
+    req = urllib.request.Request(
+        f"{OLLAMA_LOCAL_URL}/api/chat",
+        data=json.dumps({"model": CURRENT_MODEL, "messages": [{"role": "user", "content": prompt}], "stream": True}).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    full_text, token_count = "", 0
     start_time = time.time()
-
+    last_ui_update = 0
+    last_ram_check = 0
+    cached_ram = get_system_ram_usage()
+    
     console.print(Rule(f"[bold {RAINBOW_COLORS[4]}]🤖 Local AI ({CURRENT_MODEL})[/bold {RAINBOW_COLORS[4]}]"))
 
     try:
-        with Live(console=console, refresh_per_second=15) as live:
-            with urllib.request.urlopen(req, timeout=120) as response:
+        # Timeout 300s để tránh văng khi load model 70B
+        with urllib.request.urlopen(req, timeout=300) as response:
+            with Live(console=console, refresh_per_second=20) as live:
                 for line in response:
-                    if line:
-                        res_json = json.loads(line.decode('utf-8'))
-                        chunk = res_json.get("message", {}).get("content", "")
-                        full_text += chunk
-                        
-                        token_count += max(1, len(chunk) // 3)
-                        elapsed = max(0.001, time.time() - start_time)
-                        tps = token_count / elapsed
-                        ram_now = get_system_ram_usage()
+                    if not line: continue
+                    chunk = json.loads(line.decode('utf-8')).get("message", {}).get("content", "")
+                    full_text += chunk
+                    token_count += max(1, len(chunk) // 3)
+                    
+                    now = time.time()
+                    # Throttling cập nhật UI: Cứ 0.05s (20 FPS) mới parse lại Markdown 1 lần để chống giật lag CPU
+                    if now - last_ui_update > 0.05:
+                        if now - last_ram_check > 2.0: # Throttling đo RAM 2 giây 1 lần
+                            cached_ram = get_system_ram_usage()
+                            last_ram_check = now
+                            
+                        elapsed = max(0.001, now - start_time)
+                        status = f"\n\n[dim cyan]⚡ {token_count} tokens │ ⏱️ {elapsed:.1f}s │ 🚀 {token_count/elapsed:.1f} t/s │ 🧠 RAM: {cached_ram}[/dim cyan]"
+                        live.update(Panel(Markdown(full_text + status), border_style=RAINBOW_COLORS[4], box=ROUNDED))
+                        last_ui_update = now
 
-                        status_bar = f"\n\n[dim cyan]⚡ {token_count} tokens │ ⏱️ {elapsed:.1f}s │ 🚀 {tps:.1f} t/s │ 🧠 RAM: {ram_now}[/dim cyan]"
-                        live.update(Panel(Markdown(full_text + status_bar), border_style=RAINBOW_COLORS[4], box=ROUNDED))
-        
+                # Cập nhật frame cuối cùng khi kết thúc stream
+                elapsed = max(0.001, time.time() - start_time)
+                status = f"\n\n[dim cyan]⚡ {token_count} tokens │ ⏱️ {elapsed:.1f}s │ 🚀 {token_count/elapsed:.1f} t/s │ 🧠 RAM: {cached_ram}[/dim cyan]"
+                live.update(Panel(Markdown(full_text + status), border_style=RAINBOW_COLORS[4], box=ROUNDED))
+
         execute_root_ai_actions(full_text)
-
     except Exception as e:
-        flash_err(f"Lỗi Ollama Local: {e}. Vui lòng đảm bảo dịch vụ 'ollama serve' đang chạy.")
+        flash_err(f"Lỗi AI: {e}. (Hãy chắc chắn 'ollama serve' đang chạy)")
 
 
-# ─── INTENT PARSER ───
+# ─── PARSER & COMMANDS ───
 def parse_and_execute_intent(user_inp: str):
-    inp = user_inp.strip()
-    low = inp.lower()
+    low = user_inp.strip().lower()
+    if low in ('exit', 'quit', 'thoát', 'cls', '/exit'): return sys.exit(0)
+    if low in ('clear', 'xoá màn hình'): return render_welcome()
+    if low in ('đổi model', 'model'): return change_model_menu()
+    if low.startswith(('xem file ', 'cat ')): return cmd_read(user_inp.strip()[len(low.split()[0]):].strip())
+    if low.startswith(('chạy lệnh ', 'run ')): return cmd_run(user_inp.strip()[len(low.split()[0]):].strip())
+    if low in ('ls', 'dir', 'danh sách'): return cmd_ls('')
+    if low.startswith(('xoá file ', 'rm ')): return cmd_rm(user_inp.strip()[len(low.split()[0]):].strip())
+    call_ollama_stream(user_inp)
 
-    if low in ('exit', 'quit', 'thoát', 'dừng', '/exit'):
-        console.print(f"\n[bold {RAINBOW_COLORS[1]}]👋 Tạm biệt người quản trị![/bold {RAINBOW_COLORS[1]}]")
-        sys.exit(0)
-
-    if low in ('clear', 'xoá màn hình', 'xóa màn hình', '/clear', 'cls'):
-        render_welcome()
-        return
-
-    if low in ('đổi model', 'doi model', 'model', 'change model', '/model'):
-        change_model_menu()
-        return
-
-    read_keywords = ['xem file', 'đọc file', 'kiểm tra file', 'mở file', 'cat ', 'read ', '/read ']
-    for kw in read_keywords:
-        if low.startswith(kw):
-            cmd_read(inp[len(kw):].strip())
-            return
-
-    run_keywords = ['chạy lệnh', 'thực thi', 'chạy ', 'run ', 'exec ', '/run ']
-    for kw in run_keywords:
-        if low.startswith(kw):
-            cmd_run(inp[len(kw):].strip())
-            return
-
-    if low in ('ls', 'dir', 'danh sách', 'xem thư mục', 'kiểm tra thư mục', '/ls'):
-        cmd_ls('')
-        return
-
-    rm_keywords = ['xoá file', 'xóa file', 'xoá ', 'xóa ', 'rm ', '/rm ']
-    for kw in rm_keywords:
-        if low.startswith(kw):
-            cmd_rm(inp[len(kw):].strip())
-            return
-
-    if low in ('help', 'trợ giúp', 'hướng dẫn', '/help'):
-        cmd_help()
-        return
-
-    call_ollama_stream(inp)
-
-
-# ─── COMMAND HANDLERS ───
 def cmd_read(arg):
-    if not arg:
-        flash_err("Cú pháp: xem file <tên_file>")
-        return
-    p = Path(arg).expanduser()
-    if not p.is_absolute():
-        p = Path(CWD) / p
-    if not p.exists():
-        flash_err(f"Không tìm thấy file: {p}")
-        return
-    try:
-        text = p.read_text(encoding='utf-8', errors='replace')
-        ext = p.suffix.lower().replace('.', '') or 'text'
-        syntax = Syntax(text, ext, theme="monokai", line_numbers=True)
-        console.print(Panel(syntax, title=f"📄 {p.name}", border_style=RAINBOW_COLORS[3], box=ROUNDED))
-    except Exception as e:
-        flash_err(f"Lỗi đọc file: {e}")
-
+    try: console.print(Panel(Syntax(Path(arg).read_text('utf-8'), Path(arg).suffix[1:] or 'text', theme="monokai", line_numbers=True), title=f"📄 {arg}", border_style=RAINBOW_COLORS[3], box=ROUNDED))
+    except Exception as e: flash_err(str(e))
 
 def cmd_run(arg):
-    if not arg:
-        flash_err("Cú pháp: chạy <lệnh_shell>")
-        return
-    console.print(Rule(f"[bold {RAINBOW_COLORS[1]}]▶ ROOT SHELL RUNNING[/bold {RAINBOW_COLORS[1]}]"))
-    try:
-        proc = subprocess.run(arg, shell=True, cwd=CWD, capture_output=True, text=True, timeout=120)
-        if proc.stdout:
-            console.print(Panel(proc.stdout.rstrip(), title="stdout", border_style=C_GREEN, box=ROUNDED))
-        if proc.stderr:
-            console.print(Panel(proc.stderr.rstrip(), title="stderr", border_style=C_RED, box=ROUNDED))
-        if proc.returncode == 0:
-            flash_ok("Thực thi thành công")
-        else:
-            flash_err(f"Mã lỗi exit code {proc.returncode}")
-    except Exception as e:
-        flash_err(f"Lỗi: {e}")
-
+    try: 
+        p = subprocess.run(arg, shell=True, cwd=CWD, capture_output=True, text=True, timeout=120)
+        if p.stdout: console.print(Panel(p.stdout.rstrip(), title="stdout", border_style=C_GREEN, box=ROUNDED))
+        if p.stderr: console.print(Panel(p.stderr.rstrip(), title="stderr", border_style=C_RED, box=ROUNDED))
+    except Exception as e: flash_err(str(e))
 
 def cmd_ls(arg):
-    target = Path(arg) if arg else Path(CWD)
-    if not target.exists():
-        flash_err(f"Không tìm thấy: {target}")
-        return
-    tree = Tree(f"[bold {RAINBOW_COLORS[2]}]📁 {target.name}[/bold {RAINBOW_COLORS[2]}]")
     try:
-        for p in sorted(target.iterdir()):
-            if p.name.startswith('.'):
-                continue
-            if p.is_dir():
-                tree.add(f"[bold {RAINBOW_COLORS[4]}]📁 {p.name}[/bold {RAINBOW_COLORS[4]}]")
-            else:
-                tree.add(f"[white]📄 {p.name}[/white]")
-        console.print(Panel(tree, border_style=RAINBOW_COLORS[3], box=ROUNDED))
-    except Exception as e:
-        flash_err(f"Lỗi: {e}")
-
+        t = Tree(f"[bold {RAINBOW_COLORS[2]}]📁 {CWD}[/bold {RAINBOW_COLORS[2]}]")
+        for p in sorted(Path(CWD).iterdir()): t.add(f"[bold {RAINBOW_COLORS[4]}]📁 {p.name}[/bold {RAINBOW_COLORS[4]}]" if p.is_dir() else f"[white]📄 {p.name}[/white]")
+        console.print(Panel(t, border_style=RAINBOW_COLORS[3], box=ROUNDED))
+    except Exception as e: flash_err(str(e))
 
 def cmd_rm(arg):
-    if not arg:
-        flash_err("Cú pháp: xoá file <tên_file>")
-        return
-    p = Path(arg)
-    if not p.exists():
-        flash_err(f"Không thấy: {p}")
-        return
     try:
-        if p.is_dir():
-            shutil.rmtree(p)
-        else:
-            p.unlink()
+        p = Path(arg)
+        shutil.rmtree(p) if p.is_dir() else p.unlink()
         flash_ok(f"Đã xoá {p}")
-    except Exception as e:
-        flash_err(f"Lỗi xoá: {e}")
+    except Exception as e: flash_err(str(e))
 
-
-def cmd_help():
-    tbl = Table(show_header=True, box=ROUNDED, border_style=RAINBOW_COLORS[1], header_style=f"bold {RAINBOW_COLORS[1]}")
-    tbl.add_column("Khẩu lệnh tiếng Việt")
-    tbl.add_column("Hành động", style=C_WHITE)
-    rows = [
-        ("đổi model", "Chuyển giữa 12+ AI Local (Qwen, DeepSeek R1, Llama 3, Mistral...)"),
-        ("xem file <file>", "Xem nội dung file có tô màu syntax"),
-        ("chạy <lệnh>", "Chạy lệnh Shell hệ thống"),
-        ("danh sách", "Xem cấu trúc thư mục hiện tại"),
-        ("xoá file <file>", "Xoá file hoặc thư mục"),
-        ("Nhập prompt bất kỳ", "AI tự động sinh code, nhúng file và thực thi"),
-        ("thoát", "Đóng chương trình"),
-    ]
-    for r in rows:
-        tbl.add_row(*r)
-    console.print(Panel(tbl, title="[bold]📖 HƯỚNG DẪN SỬ DỤNG ROOT ENGINE[/bold]", border_style=RAINBOW_COLORS[1], box=ROUNDED))
-
-
-# ─── MAIN ENTRYPOINT ───
 def main():
     ensure_environment()
     render_welcome()
-
     while True:
         try:
-            user_inp = console.input(f"[bold {RAINBOW_COLORS[1]}]👤 {os.path.basename(CWD)} ❯ [/bold {RAINBOW_COLORS[1]}]").strip()
-            if not user_inp:
-                continue
+            inp = console.input(f"[bold {RAINBOW_COLORS[1]}]👤 {os.path.basename(CWD)} ❯ [/bold {RAINBOW_COLORS[1]}]").strip()
+            if inp: parse_and_execute_intent(inp); console.print(f"[dim]{'─' * min(shutil.get_terminal_size().columns, 65)}[/dim]\n")
+        except (KeyboardInterrupt, EOFError): break
+    console.print(f"\n[bold {RAINBOW_COLORS[1]}]👋 Tạm biệt người quản trị![/bold {RAINBOW_COLORS[1]}]")
 
-            parse_and_execute_intent(user_inp)
-            console.print(f"[dim]{'─' * min(shutil.get_terminal_size().columns, 65)}[/dim]\n")
-
-        except KeyboardInterrupt:
-            console.print(f"\n[bold {RAINBOW_COLORS[1]}]👋 Tạm biệt người quản trị![/bold {RAINBOW_COLORS[1]}]")
-            break
-        except EOFError:
-            break
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
